@@ -1,0 +1,6 @@
+{
+  "name": "DeliveryX",
+  "description": "Hyper-local multi-vendor delivery marketplace for Mathira, Karatina, and Tumutumu in Kenya.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

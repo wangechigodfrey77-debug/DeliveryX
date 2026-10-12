@@ -1,0 +1,97 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and role information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "role": { "type": "string", "enum": ["buyer", "seller", "admin"] },
+        "location": { "type": "string", "enum": ["Mathira", "Karatina", "Tumutumu", "All"] },
+        "sellerInfo": {
+          "type": "object",
+          "properties": {
+            "businessName": { "type": "string", "maxLength": 150 },
+            "description": { "type": "string", "maxLength": 500 },
+            "location": { "type": "string" },
+            "phone": { "type": "string" },
+            "verified": { "type": "boolean" }
+          }
+        }
+      },
+      "required": ["uid", "email", "name", "role", "location"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Products listed by sellers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "price": { "type": "number" },
+        "stock": { "type": "number" },
+        "category": { "type": "string" },
+        "location": { "type": "string" },
+        "images": { "type": "array" },
+        "sellerId": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "freeDelivery": { "type": "boolean" },
+        "tags": { "type": "array" }
+      },
+      "required": ["id", "title", "price", "stock", "category", "location", "sellerId"]
+    },
+    "Cart": {
+      "title": "Cart",
+      "description": "User shopping cart",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "items": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "items"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer orders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "buyerId": { "type": "string" },
+        "buyerName": { "type": "string" },
+        "buyerPhone": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["Pending", "Confirmed", "Out for Delivery", "Delivered", "Cancelled"] },
+        "deliveryLocation": { "type": "string" },
+        "deliveryAddress": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "buyerId", "sellerId", "items", "totalAmount", "status", "deliveryLocation"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Product catalog"
+    },
+    "/carts/{userId}": {
+      "schema": "Cart",
+      "description": "User shopping carts"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer orders"
+    }
+  }
+}

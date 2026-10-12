@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) && isValidId(userId) && incoming().uid == userId && incoming().email is string;
+      allow update: if isOwner(userId) && incoming().uid == existing().uid;
+      allow delete: if isOwner(userId);
+    }
+
+    // Products collection (Public read, Seller create/update/delete)
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(productId) && incoming().sellerId == request.auth.uid && incoming().title is string && incoming().price is number;
+      allow update: if isSignedIn() && existing().sellerId == request.auth.uid && incoming().sellerId == existing().sellerId;
+      allow delete: if isSignedIn() && existing().sellerId == request.auth.uid;
+    }
+
+    // Carts collection (Owner only)
+    match /carts/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Orders collection (Buyer can create/read their orders, Seller can read/update orders for their sellerId)
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(orderId) && incoming().buyerId == request.auth.uid && incoming().items is list && incoming().totalAmount is number;
+      allow update: if isSignedIn() && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid);
+      allow delete: if isSignedIn() && resource.data.buyerId == request.auth.uid;
+    }
+  }
+}
