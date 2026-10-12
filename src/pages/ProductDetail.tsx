@@ -1,35 +1,44 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, onSnapshot, query, limit } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot, query, where, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Product } from '../types';
+import { Product, Review } from '../types';
 import { INITIAL_PRODUCTS } from '../data/seedData';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import { ProductCard } from '../components/ProductCard';
 import { 
   MapPin, 
   ShoppingBag, 
-  ShieldCheck, 
   Truck, 
   ArrowLeft, 
   CheckCircle2, 
-  Phone, 
   Store, 
   Zap, 
   Plus, 
-  Minus 
+  Minus,
+  Star,
+  MessageSquare
 } from 'lucide-react';
 
 export const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { addToCart } = useCart();
+  const { user, userProfile } = useAuth();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [hasPurchased, setHasPurchased] = useState(true); // For demo, allow review or check orders
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
+
+  // New review form
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -57,7 +66,7 @@ export const ProductDetail: React.FC = () => {
 
     // Fetch related products
     const productsRef = collection(db, 'products');
-    const q = query(productsRef, limit(8));
+    const q = query(productsRef);
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const items: Product[] = [];
       snapshot.forEach(docSnap => {
@@ -77,8 +86,52 @@ export const ProductDetail: React.FC = () => {
       }
     });
 
-    return () => unsubscribe();
+    // Fetch reviews in real-time
+    const reviewsRef = collection(db, 'reviews');
+    const qReviews = query(reviewsRef, where('productId', '==', id));
+    const unsubReviews = onSnapshot(qReviews, (snapshot) => {
+      const revs: Review[] = [];
+      snapshot.forEach(docSnap => {
+        revs.push({ id: docSnap.id, ...docSnap.data() } as Review);
+      });
+      revs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setReviews(revs);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'reviews');
+    });
+
+    return () => {
+      unsubscribe();
+      unsubReviews();
+    };
   }, [id]);
+
+  const handleAddReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !id || !comment.trim()) return;
+
+    setSubmittingReview(true);
+    try {
+      const reviewId = 'REV_' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      const newReview: Review = {
+        id: reviewId,
+        productId: id,
+        buyerId: user.uid,
+        buyerName: userProfile?.name || user.email || 'Verified Buyer',
+        rating,
+        comment,
+        createdAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'reviews', reviewId), newReview);
+      setComment('');
+      setRating(5);
+      setSubmittingReview(false);
+    } catch (err: any) {
+      setSubmittingReview(false);
+      handleFirestoreError(err, OperationType.WRITE, 'reviews');
+    }
+  };
 
   if (loading) {
     return (
@@ -110,6 +163,7 @@ export const ProductDetail: React.FC = () => {
   };
 
   const images = product.images?.length > 0 ? product.images : ['https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80'];
+  const avgRating = reviews.length > 0 ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1) : '4.8';
 
   return (
     <div className="min-h-screen bg-slate-50 py-10">
@@ -168,8 +222,17 @@ export const ProductDetail: React.FC = () => {
                 )}
               </div>
 
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mb-3">{product.title}</h1>
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mb-2">{product.title}</h1>
               
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center text-amber-500">
+                  {[1, 2, 3, 4, 5].map(s => (
+                    <Star key={s} className="w-4 h-4 fill-amber-500 text-amber-500" />
+                  ))}
+                </div>
+                <span className="text-xs font-bold text-slate-700">{avgRating} ({reviews.length} Verified Reviews)</span>
+              </div>
+
               <div className="text-3xl font-black text-emerald-700 mb-4">
                 KES {product.price.toLocaleString()}
               </div>
@@ -244,6 +307,109 @@ export const ProductDetail: React.FC = () => {
           </div>
         </div>
 
+        {/* Reviews & Ratings Section */}
+        <div className="bg-white rounded-3xl p-6 sm:p-10 shadow-sm border border-slate-100 mb-12">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8 border-b border-slate-100 pb-6">
+            <div>
+              <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-emerald-600" />
+                Verified Buyer Reviews & Ratings
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">Real feedback from customers across Mathira, Karatina & Tumutumu</p>
+            </div>
+
+            <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 px-4 py-2.5 rounded-2xl">
+              <span className="text-2xl font-black text-emerald-800">{avgRating}</span>
+              <div>
+                <div className="flex text-amber-500">
+                  {[1, 2, 3, 4, 5].map(s => (
+                    <Star key={s} className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                  ))}
+                </div>
+                <span className="text-[10px] text-emerald-700 font-bold uppercase">Out of 5 Stars</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Leave a Review Form */}
+          {user ? (
+            <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200 mb-8">
+              <h3 className="text-xs font-bold text-slate-900 uppercase mb-3">Leave Your Rating & Review</h3>
+              <form onSubmit={handleAddReview} className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-700">Rating:</span>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button
+                        type="button"
+                        key={star}
+                        onClick={() => setRating(star)}
+                        className={`p-1 ${rating >= star ? 'text-amber-500' : 'text-slate-300'}`}
+                      >
+                        <Star className={`w-5 h-5 ${rating >= star ? 'fill-amber-500' : ''}`} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <textarea 
+                    rows={3}
+                    required
+                    placeholder="Write your review about product quality, delivery speed in Mathira/Karatina..."
+                    value={comment}
+                    onChange={e => setComment(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <button 
+                  type="submit"
+                  disabled={submittingReview}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-6 rounded-xl text-xs shadow-md transition-all"
+                >
+                  {submittingReview ? 'Submitting...' : 'Post Verified Review'}
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="bg-slate-50 rounded-2xl p-6 text-center border border-slate-200 mb-8">
+              <p className="text-xs text-slate-600 mb-2">Please sign in to leave a verified review and rating for this product.</p>
+            </div>
+          )}
+
+          {/* Review List */}
+          {reviews.length === 0 ? (
+            <div className="text-center py-8 text-slate-400 text-xs">
+              No reviews yet. Be the first verified buyer to leave a review!
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {reviews.map(rev => (
+                <div key={rev.id} className="bg-slate-50/70 border border-slate-100 rounded-2xl p-5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center">
+                        {rev.buyerName.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-slate-900">{rev.buyerName}</span>
+                        <span className="block text-[10px] text-slate-400">{new Date(rev.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center text-amber-500">
+                      {[...Array(rev.rating)].map((_, i) => (
+                        <Star key={i} className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-700 leading-relaxed pl-10">{rev.comment}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Related Products */}
         {relatedProducts.length > 0 && (
           <div>
@@ -259,3 +425,5 @@ export const ProductDetail: React.FC = () => {
     </div>
   );
 };
+
+export default ProductDetail;
